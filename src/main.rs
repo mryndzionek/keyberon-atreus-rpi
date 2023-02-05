@@ -12,6 +12,7 @@ mod app {
         usb::UsbBus,
         watchdog::Watchdog,
     };
+    use bsp::XOSC_CRYSTAL_FREQ;
     use cortex_m::prelude::_embedded_hal_watchdog_Watchdog;
     use cortex_m::prelude::_embedded_hal_watchdog_WatchdogEnable;
     use defmt_rtt as _;
@@ -105,7 +106,6 @@ mod app {
     use usb_device::device::UsbDeviceState;
 
     const SCAN_TIME_US: MicrosDurationU32 = MicrosDurationU32::millis(1);
-    const EXTERNAL_XTAL_FREQ_HZ: u32 = 12_000_000u32;
 
     static mut USB_BUS: Option<usb_device::bus::UsbBusAllocator<bsp::hal::usb::UsbBus>> = None;
     const VID: u16 = 0x16c0;
@@ -148,7 +148,7 @@ mod app {
         let sio = Sio::new(c.device.SIO);
 
         let clocks = init_clocks_and_plls(
-            EXTERNAL_XTAL_FREQ_HZ,
+            XOSC_CRYSTAL_FREQ,
             c.device.XOSC,
             c.device.CLOCKS,
             c.device.PLL_SYS,
@@ -218,7 +218,6 @@ mod app {
                 .serial_number(env!("CARGO_PKG_VERSION"))
                 .build();
 
-        // Start watchdog and feed it with the lowest priority task at 1000hz
         watchdog.start(MicrosDurationU32::millis(10));
 
         let mut timer = bsp::hal::Timer::new(c.device.TIMER, &mut resets);
@@ -300,7 +299,7 @@ mod app {
     }
 
     #[idle(local = [])]
-    fn idle(cx: idle::Context) -> ! {
+    fn idle(_cx: idle::Context) -> ! {
         loop {
             rtic::export::wfi();
         }
