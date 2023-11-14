@@ -6,6 +6,12 @@
 for my Atreus-like keyboards, using [`probe-run`] + [`defmt`] + [`flip-link`].
 STM32F1 (Bluepill) version [here](https://github.com/mryndzionek/keyberon-atreus).
 
+### Build
+
+```
+cargo run --release --bin keyberon-atreus-rpi
+```
+
 [`probe-run`]: https://crates.io/crates/probe-run
 [`defmt`]: https://github.com/knurling-rs/defmt
 [`flip-link`]: https://github.com/knurling-rs/flip-link

@@ -19,14 +19,14 @@ mod app {
     use embedded_hal::digital::v2::OutputPin;
     use fugit::MicrosDurationU32;
     use keyberon::action::{
-        d, k, l, m, Action,
-        Action::{HoldTap, Trans},
+        k, l, m, Action,
+        Action::{Custom, HoldTap, Trans},
         HoldTapAction, HoldTapConfig,
     };
     use keyberon::debounce::Debouncer;
     use keyberon::key_code::KbHidReport;
     use keyberon::key_code::KeyCode::*;
-    use keyberon::layout::{Event, Layout};
+    use keyberon::layout::{CustomEvent, Event, Layout};
     use keyberon::matrix::Matrix;
     use panic_probe as _;
     use usb_device::prelude::{UsbDeviceBuilder, UsbVidPid};
@@ -40,12 +40,12 @@ mod app {
         tap: k(Escape),
     });
 
-    const RALT_EDIT: Action<()> = HoldTap(&HoldTapAction {
-        timeout: 140,
+    const LCTL_SLASH: Action<()> = HoldTap(&HoldTapAction {
+        timeout: 200,
         tap_hold_interval: 0,
         config: HoldTapConfig::HoldOnOtherKeyPress,
-        hold: k(RAlt),
-        tap: d(4),
+        hold: k(LCtrl),
+        tap: k(Slash),
     });
 
     const TILD: Action<()> = m(&[LShift, Grave].as_slice());
@@ -64,17 +64,18 @@ mod app {
     const LCBR: Action<()> = m(&[LShift, LBracket].as_slice());
     const RCBR: Action<()> = m(&[LShift, RBracket].as_slice());
     const PIPE: Action<()> = m(&[LShift, Bslash].as_slice());
-    const COPY: Action<()> = m(&[LCtrl, C].as_slice());
-    const PASTE: Action<()> = m(&[LCtrl, V].as_slice());
-    const VSFMT: Action<()> = m(&[LCtrl, K, F].as_slice());
+    const WSCP_LEFT: Action<()> = m(&[LCtrl, LAlt, Left].as_slice());
+    const WSCP_RIGHT: Action<()> = m(&[LCtrl, LAlt, Right].as_slice());
+    const BACK: Action<()> = m(&[LCtrl, LAlt, Minus].as_slice());
+    const FORWD: Action<()> = m(&[LCtrl, LShift, Minus].as_slice());
 
     #[rustfmt::skip]
-    pub const LAYERS: keyberon::layout::Layers<14, 4, 5, ()> = [
+    pub const LAYERS: keyberon::layout::Layers<14, 4, 4, ()> = [
         [
-            [k(Tab),    k(Q),     k(W),    k(E),    k(R), k(T),     Trans,     Trans,     k(Y),      k(U), k(I),     k(O),    k(P),      k(Minus)],
-            [LCTL_ESC,  k(A),     k(S),    k(D),    k(F), k(G),     Trans,     Trans,     k(H),      k(J), k(K),     k(L),    k(SColon), k(Quote)],
-            [k(LShift), k(Z),     k(X),    k(C),    k(V), k(B),     l(3),      k(RShift), k(N),      k(M), k(Comma), k(Dot),  k(Slash),  k(Enter)],
-            [k(Grave),  k(LCtrl), k(LAlt), k(LGui), l(1), k(Space), RALT_EDIT, k(RAlt),   k(BSpace), l(2), k(Left),  k(Down), k(Up),     k(Right)],
+            [k(Tab),    k(SColon), k(Comma), k(Dot),  k(P), k(Y),     Trans,   Trans,     k(F),      k(G), k(C),    k(R),    k(L),  k(Minus)],
+            [LCTL_ESC,  k(A),      k(O),     k(E),    k(U), k(I),     Trans,   Trans,     k(D),      k(H), k(T),    k(N),    k(S),  LCTL_SLASH],
+            [k(LShift), k(Quote),  k(Q),     k(J),    k(K), k(X),     l(3),    k(RShift), k(B),      k(M), k(W),    k(V),    k(Z),  k(Enter)],
+            [k(Grave),  k(LCtrl),  k(LAlt),  k(LGui), l(1), k(Space), k(RAlt), k(RAlt),   k(BSpace), l(2), k(Left), k(Down), k(Up), k(Right)],
         ],
         [
             [TILD,      EXLM,  AT,    HASH,  DLR,    PERC,   Trans, Trans, CIRC,   AMPR,   ASTR,             LPRN,            RPRN,          k(Delete)],
@@ -83,22 +84,16 @@ mod app {
             [Trans,     Trans, Trans, Trans, Trans,  Trans,  Trans, Trans, Trans,  Trans,  k(MediaNextSong), k(MediaVolDown), k(MediaVolUp), k(MediaPlayPause)],
         ],
         [
-            [k(Grave),  k(Kb1), k(Kb2), k(Kb3), k(Kb4), k(Kb5), Trans, Trans, k(Kb6), k(Kb7),   k(Kb8),           k(Kb9),          k(Kb0),        k(Delete)],
-            [k(Delete), k(F1),  k(F2),  k(F3),  k(F4),  k(F5),  Trans, Trans, k(F6),  k(Minus), k(Equal),         k(LBracket),     k(RBracket),   k(Bslash)],
-            [Trans,     k(F7),  k(F8),  k(F9),  k(F10), k(F11), Trans, Trans, k(F12), k(End),   Trans,            Trans,           Trans,         Trans],
-            [Trans,     Trans,  Trans,  Trans,  Trans,  Trans,  Trans, Trans, Trans,  Trans,    k(MediaNextSong), k(MediaVolDown), k(MediaVolUp), k(MediaPlayPause)],
+            [k(Grave),  k(Kb1), k(Kb2), k(Kb3), k(Kb4), k(Kb5), Trans, Trans, k(Kb6), k(Kb7),   k(Kb8),       k(Kb9),          k(Kb0),        k(Delete)],
+            [k(Delete), k(F1),  k(F2),  k(F3),  k(F4),  k(F5),  Trans, Trans, k(F6),  k(Minus), k(Equal),     k(LBracket),     k(RBracket),   k(Bslash)],
+            [Trans,     k(F7),  k(F8),  k(F9),  k(F10), k(F11), Trans, Trans, k(F12), k(End),   Trans,        Trans,           Trans,         Trans],
+            [Trans,     Trans,  Trans,  Trans,  Trans,  Trans,  Trans, Trans, Trans,  Trans,    {Custom(())}, k(MediaVolDown), k(MediaVolUp), k(MediaPlayPause)],
         ],
         [
-            [TILD,      EXLM,  AT,    HASH,  DLR,    PERC,   Trans, Trans, CIRC,       AMPR,    k(Up),            LPRN,           RPRN,           k(Delete)],
-            [k(Delete), k(F1), k(F2), k(F3), k(F4),  k(F5),  Trans, Trans, k(F6),      k(Left), k(Down),          k(Right),        RCBR,          PIPE],
-            [Trans,     k(F7), k(F8), k(F9), k(F10), k(F11), Trans, Trans, k(F12),     k(End),  Trans,            Trans,           Trans,         Trans],
-            [Trans,     Trans, Trans, Trans, Trans,  Trans,  Trans, Trans, k(PgDown),  k(PgUp), k(MediaNextSong), k(MediaVolDown), k(MediaVolUp), k(MediaPlayPause)],
-        ],
-        [
-            [k(Tab),    k(Q),     k(W),    k(E),    k(R),  k(T),     Trans, Trans,     k(Y),      k(U), k(I),     k(O),    k(P),      k(Minus)],
-            [LCTL_ESC,  k(A),     k(S),    PASTE,   COPY,  k(G),     Trans, Trans,     k(H),      k(J), k(K),     k(L),    k(SColon), k(Quote)],
-            [k(LShift), k(Z),     k(X),    k(C),    VSFMT, k(B),     l(3),  k(RShift), k(N),      k(M), k(Comma), k(Dot),  k(Slash),  k(Enter)],
-            [k(Grave),  k(LCtrl), k(LAlt), k(LGui), l(1),  k(Space), d(0),  k(RAlt),   k(BSpace), l(2), k(Left),  k(Down), k(Up),     k(Right)],
+            [TILD,      EXLM,  AT,    BACK,      FORWD,       PERC,   Trans, Trans, CIRC,      AMPR,    k(Up),            LPRN,            RPRN,          k(Delete)],
+            [k(LAlt),   k(F1), k(F2), WSCP_LEFT, WSCP_RIGHT,  k(F5),  Trans, Trans, k(F6),     k(Left), k(Down),          k(Right),        RCBR,          PIPE],
+            [Trans,     k(F7), k(F8), k(F9),     k(F10),      k(F11), Trans, Trans, k(F12),    k(Home), k(End),           Trans,           Trans,         Trans],
+            [Trans,     Trans, Trans, Trans,     Trans,       Trans,  Trans, Trans, k(PgDown), k(PgUp), k(MediaNextSong), k(MediaVolDown), k(MediaVolUp), k(MediaPlayPause)],
         ],
     ];
 
@@ -120,7 +115,7 @@ mod app {
             keyberon::keyboard::Keyboard<()>,
         >,
         #[lock_free]
-        layout: Layout<14, 4, 5, ()>,
+        layout: Layout<14, 4, 4, ()>,
     }
 
     #[local]
@@ -170,32 +165,32 @@ mod app {
 
         let matrix = Matrix::new(
             [
-                pins.gpio2.into_pull_up_input().into(),
+                pins.gpio29.into_pull_up_input().into(),
                 pins.gpio28.into_pull_up_input().into(),
-                pins.gpio3.into_pull_up_input().into(),
                 pins.gpio27.into_pull_up_input().into(),
-                pins.gpio4.into_pull_up_input().into(),
-                pins.gpio5.into_pull_up_input().into(),
                 pins.gpio26.into_pull_up_input().into(),
-                pins.gpio6.into_pull_up_input().into(),
                 pins.gpio22.into_pull_up_input().into(),
-                pins.gpio7.into_pull_up_input().into(),
-                pins.gpio10.into_pull_up_input().into(),
+                pins.gpio19.into_pull_up_input().into(),
+                pins.gpio18.into_pull_up_input().into(),
+                pins.gpio14.into_pull_up_input().into(),
                 pins.gpio11.into_pull_up_input().into(),
-                pins.gpio12.into_pull_up_input().into(),
-                pins.gpio21.into_pull_up_input().into(),
+                pins.gpio9.into_pull_up_input().into(),
+                pins.gpio8.into_pull_up_input().into(),
+                pins.gpio7.into_pull_up_input().into(),
+                pins.gpio6.into_pull_up_input().into(),
+                pins.gpio3.into_pull_up_input().into(),
             ],
             [
-                pins.gpio13.into_push_pull_output().into(),
-                pins.gpio15.into_push_pull_output().into(),
-                pins.gpio14.into_push_pull_output().into(),
+                pins.gpio4.into_push_pull_output().into(),
                 pins.gpio20.into_push_pull_output().into(),
+                pins.gpio12.into_push_pull_output().into(),
+                pins.gpio16.into_push_pull_output().into(),
             ],
         )
         .unwrap();
 
         let layout = Layout::new(&LAYERS);
-        let debouncer = Debouncer::new([[false; 14]; 4], [[false; 14]; 4], 20);
+        let debouncer = Debouncer::new([[false; 14]; 4], [[false; 14]; 4], 5);
 
         let usb_bus = UsbBusAllocator::new(UsbBus::new(
             c.device.USBCTRL_REGS,
@@ -213,7 +208,7 @@ mod app {
 
         let usb_dev =
             UsbDeviceBuilder::new(unsafe { USB_BUS.as_ref().unwrap() }, UsbVidPid(VID, PID))
-                .manufacturer("Ciota")
+                .manufacturer("Molcos")
                 .product("Atreus_52")
                 .serial_number(env!("CARGO_PKG_VERSION"))
                 .build();
@@ -260,10 +255,22 @@ mod app {
         c.shared.layout.event(event)
     }
 
+    fn reset_to_bootloader() {
+        cortex_m::interrupt::disable();
+
+        // jump to usb
+        bsp::hal::rom_data::reset_to_usb_boot(0, 0);
+        loop {}
+    }
+
     #[task(priority = 2, local = [led], shared = [usb_dev, usb_class, layout])]
     fn tick_keyberon(mut c: tick_keyberon::Context) {
+        let tick = c.shared.layout.tick();
         if c.shared.usb_dev.lock(|d| d.state()) != UsbDeviceState::Configured {
             return;
+        }
+        if let CustomEvent::Release(()) = tick {
+            reset_to_bootloader()
         }
 
         let report: KbHidReport = c.shared.layout.keycodes().collect();
@@ -292,7 +299,12 @@ mod app {
 
         cx.local.watchdog.feed();
 
-        for event in cx.local.debouncer.events(cx.local.matrix.get().unwrap()) {
+        for event in cx.local.debouncer.events(
+            cx.local
+                .matrix
+                .get_with_delay(|| cortex_m::asm::delay(250))
+                .unwrap(),
+        ) {
             handle_event::spawn(event).unwrap();
         }
         tick_keyberon::spawn().unwrap();
