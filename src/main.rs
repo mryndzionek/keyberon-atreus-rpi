@@ -6,7 +6,7 @@ mod app {
 
     use bsp::hal::{
         clocks::init_clocks_and_plls,
-        gpio::{DynPin, PushPull},
+        gpio::{DynPinId, FunctionSioInput, FunctionSioOutput, Pin, PullDown, PullUp},
         sio::Sio,
         timer::Alarm,
         usb::UsbBus,
@@ -122,11 +122,17 @@ mod app {
     struct Local {
         watchdog: bsp::hal::watchdog::Watchdog,
         alarm: bsp::hal::timer::Alarm0,
-        matrix: Matrix<DynPin, DynPin, 14, 4>,
+        matrix: Matrix<
+            Pin<DynPinId, FunctionSioInput, PullUp>,
+            Pin<DynPinId, FunctionSioOutput, PullDown>,
+            14,
+            4,
+        >,
         debouncer: Debouncer<[[bool; 14]; 4]>,
         led: bsp::hal::gpio::Pin<
-            bsp::hal::gpio::pin::bank0::Gpio25,
-            bsp::hal::gpio::Output<PushPull>,
+            bsp::hal::gpio::bank0::Gpio25,
+            bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioOutput>,
+            bsp::hal::gpio::PullDown,
         >,
     }
 
@@ -161,36 +167,57 @@ mod app {
             &mut resets,
         );
 
-        let led = pins.led.into_push_pull_output();
+        let led: bsp::hal::gpio::Pin<
+            bsp::hal::gpio::bank0::Gpio25,
+            bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioOutput>,
+            bsp::hal::gpio::PullDown,
+        > = pins.led.into_push_pull_output();
 
-        let matrix = Matrix::new(
+        let matrix: Matrix<
+            bsp::hal::gpio::Pin<
+                DynPinId,
+                bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioInput>,
+                PullUp,
+            >,
+            bsp::hal::gpio::Pin<
+                DynPinId,
+                bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioOutput>,
+                bsp::hal::gpio::PullDown,
+            >,
+            14,
+            4,
+        > = Matrix::new(
             [
-                pins.gpio29.into_pull_up_input().into(),
-                pins.gpio28.into_pull_up_input().into(),
-                pins.gpio27.into_pull_up_input().into(),
-                pins.gpio26.into_pull_up_input().into(),
-                pins.gpio22.into_pull_up_input().into(),
-                pins.gpio19.into_pull_up_input().into(),
-                pins.gpio18.into_pull_up_input().into(),
-                pins.gpio14.into_pull_up_input().into(),
-                pins.gpio11.into_pull_up_input().into(),
-                pins.gpio9.into_pull_up_input().into(),
-                pins.gpio8.into_pull_up_input().into(),
-                pins.gpio7.into_pull_up_input().into(),
-                pins.gpio6.into_pull_up_input().into(),
-                pins.gpio3.into_pull_up_input().into(),
+                pins.gpio29.into_pull_up_input().into_dyn_pin(),
+                pins.gpio28.into_pull_up_input().into_dyn_pin(),
+                pins.gpio27.into_pull_up_input().into_dyn_pin(),
+                pins.gpio26.into_pull_up_input().into_dyn_pin(),
+                pins.gpio22.into_pull_up_input().into_dyn_pin(),
+                pins.gpio19.into_pull_up_input().into_dyn_pin(),
+                pins.gpio18.into_pull_up_input().into_dyn_pin(),
+                pins.gpio14.into_pull_up_input().into_dyn_pin(),
+                pins.gpio11.into_pull_up_input().into_dyn_pin(),
+                pins.gpio9.into_pull_up_input().into_dyn_pin(),
+                pins.gpio8.into_pull_up_input().into_dyn_pin(),
+                pins.gpio7.into_pull_up_input().into_dyn_pin(),
+                pins.gpio6.into_pull_up_input().into_dyn_pin(),
+                pins.gpio3.into_pull_up_input().into_dyn_pin(),
             ],
             [
-                pins.gpio4.into_push_pull_output().into(),
-                pins.gpio20.into_push_pull_output().into(),
-                pins.gpio12.into_push_pull_output().into(),
-                pins.gpio16.into_push_pull_output().into(),
+                pins.gpio4.into_push_pull_output().into_dyn_pin(),
+                pins.gpio20.into_push_pull_output().into_dyn_pin(),
+                pins.gpio12.into_push_pull_output().into_dyn_pin(),
+                pins.gpio16.into_push_pull_output().into_dyn_pin(),
             ],
         )
         .unwrap();
 
         let layout = Layout::new(&LAYERS);
         let debouncer = Debouncer::new([[false; 14]; 4], [[false; 14]; 4], 5);
+
+        let mut timer = bsp::hal::Timer::new(c.device.TIMER, &mut resets, &clocks);
+        let mut alarm = timer.alarm_0().unwrap();
+        let _ = alarm.schedule(SCAN_TIME_US);
 
         let usb_bus = UsbBusAllocator::new(UsbBus::new(
             c.device.USBCTRL_REGS,
@@ -214,10 +241,6 @@ mod app {
                 .build();
 
         watchdog.start(MicrosDurationU32::millis(10));
-
-        let mut timer = bsp::hal::Timer::new(c.device.TIMER, &mut resets);
-        let mut alarm = timer.alarm_0().unwrap();
-        let _ = alarm.schedule(SCAN_TIME_US);
         alarm.enable_interrupt();
 
         defmt::info!("Enabled");

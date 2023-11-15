@@ -6,13 +6,13 @@ version = "0.1.0"
 [dependencies]
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
-embedded-hal = { version = "0.2.5", features = ["unproven"] }
+embedded-hal = { version = "0.2.7", features = ["unproven"] }
 
 defmt = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
-vcc-gnd-yd-rp2040 = "0.4"
+vcc-gnd-yd-rp2040 = "0.5"
 
 heapless = "0.7"
 cortex-m-rtic = "1.1"
