@@ -48,6 +48,13 @@ mod app {
     const VID: u16 = 0x16c0;
     const PID: u16 = 0x27db;
 
+    type KbdMatrix = Matrix<
+        Pin<DynPinId, FunctionSioInput, PullUp>,
+        Pin<DynPinId, FunctionSioOutput, PullDown>,
+        14,
+        4,
+    >;
+
     #[shared]
     struct Shared {
         usb_dev: usb_device::device::UsbDevice<'static, bsp::hal::usb::UsbBus>,
@@ -63,12 +70,7 @@ mod app {
     struct Local {
         watchdog: bsp::hal::watchdog::Watchdog,
         alarm: bsp::hal::timer::Alarm0,
-        matrix: Matrix<
-            Pin<DynPinId, FunctionSioInput, PullUp>,
-            Pin<DynPinId, FunctionSioOutput, PullDown>,
-            14,
-            4,
-        >,
+        matrix: KbdMatrix,
         debouncer: Debouncer<[[bool; 14]; 4]>,
         led: bsp::hal::gpio::Pin<
             bsp::hal::gpio::bank0::Gpio25,
@@ -115,20 +117,7 @@ mod app {
             bsp::hal::gpio::PullDown,
         > = pins.led.into_push_pull_output();
 
-        let matrix: Matrix<
-            bsp::hal::gpio::Pin<
-                DynPinId,
-                bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioInput>,
-                PullUp,
-            >,
-            bsp::hal::gpio::Pin<
-                DynPinId,
-                bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioOutput>,
-                bsp::hal::gpio::PullDown,
-            >,
-            14,
-            4,
-        > = Matrix::new(
+        let matrix: KbdMatrix = Matrix::new(
             [
                 pins.gpio29.into_pull_up_input().into_dyn_pin(),
                 pins.gpio28.into_pull_up_input().into_dyn_pin(),
