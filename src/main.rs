@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![feature(type_alias_impl_trait)]
 
 use panic_probe as _;
 
@@ -50,7 +51,6 @@ mod app {
             bsp::hal::usb::UsbBus,
             keyberon::keyboard::Keyboard<()>,
         >,
-        #[lock_free]
         layout: Layout<14, 4, 4, ()>,
     }
 
@@ -73,7 +73,7 @@ mod app {
     }
 
     #[init]
-    fn init(c: init::Context) -> (Shared, Local, init::Monotonics) {
+    fn init(c: init::Context) -> (Shared, Local) {
         defmt::info!("Starting Keyberon");
 
         unsafe {
@@ -194,7 +194,6 @@ mod app {
                 debouncer,
                 led,
             },
-            init::Monotonics(),
         )
     }
 
@@ -209,9 +208,11 @@ mod app {
         });
     }
 
-    #[task(priority = 2, capacity = 8, shared = [layout])]
-    fn handle_event(c: handle_event::Context, event: Event) {
-        c.shared.layout.event(event)
+    #[task(priority = 2, shared = [layout])]
+    async fn handle_event(mut c: handle_event::Context, event: Event) {
+        c.shared.layout.lock(|layout| {
+            layout.event(event);
+        })
     }
 
     fn reset_to_bootloader() {
@@ -223,8 +224,9 @@ mod app {
     }
 
     #[task(priority = 2, local = [led], shared = [usb_dev, usb_class, layout])]
-    fn tick_keyberon(mut c: tick_keyberon::Context) {
-        let tick = c.shared.layout.tick();
+    async fn tick_keyberon(mut c: tick_keyberon::Context) {
+        let tick = c.shared.layout.lock(|layout| layout.tick());
+
         if c.shared.usb_dev.lock(|d| d.state()) != UsbDeviceState::Configured {
             return;
         }
@@ -232,7 +234,8 @@ mod app {
             reset_to_bootloader()
         }
 
-        let report: KbHidReport = c.shared.layout.keycodes().collect();
+        let report: KbHidReport = c.shared.layout.lock(|layout| layout.keycodes().collect());
+
         if !c
             .shared
             .usb_class

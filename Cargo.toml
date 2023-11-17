@@ -14,10 +14,10 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 vcc-gnd-yd-rp2040 = "0.5"
 usb-device = "0.2.9"
 
-cortex-m-rtic = "1.1"
+rtic = { version = "2", features = ["thumbv6-backend"] }
 keyberon = { git = "https://github.com/TeXitoi/keyberon" }
 
-fugit = "0.3.7"
+fugit = "0.3"
 
 # cargo build/run
 [profile.dev]
