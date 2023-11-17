@@ -31,6 +31,11 @@ use usb_device::prelude::{UsbDeviceBuilder, UsbVidPid};
 
 use vcc_gnd_yd_rp2040 as bsp;
 
+use rtic_sync::{
+    channel::{Receiver, Sender},
+    make_channel,
+};
+
 mod layout;
 
 #[rtic::app(device = bsp::hal::pac, peripherals = true, dispatchers = [PIO0_IRQ_0])]
@@ -70,6 +75,7 @@ mod app {
             bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioOutput>,
             bsp::hal::gpio::PullDown,
         >,
+        ev_sender: Sender<'static, Event, 8>,
     }
 
     #[init]
@@ -179,6 +185,9 @@ mod app {
         watchdog.start(MicrosDurationU32::millis(10));
         alarm.enable_interrupt();
 
+        let (ev_sender, r) = make_channel!(Event, 8);
+        handle_event::spawn(r).unwrap();
+
         defmt::info!("Enabled");
 
         (
@@ -193,6 +202,7 @@ mod app {
                 matrix,
                 debouncer,
                 led,
+                ev_sender,
             },
         )
     }
@@ -209,10 +219,12 @@ mod app {
     }
 
     #[task(priority = 2, shared = [layout])]
-    async fn handle_event(mut c: handle_event::Context, event: Event) {
-        c.shared.layout.lock(|layout| {
-            layout.event(event);
-        })
+    async fn handle_event(mut c: handle_event::Context, mut receiver: Receiver<'static, Event, 8>) {
+        while let Ok(event) = receiver.recv().await {
+            c.shared.layout.lock(|layout| {
+                layout.event(event);
+            })
+        }
     }
 
     fn reset_to_bootloader() {
@@ -252,7 +264,7 @@ mod app {
         binds = TIMER_IRQ_0,
         priority = 1,
         shared = [],
-        local = [watchdog, alarm, matrix, debouncer],
+        local = [watchdog, alarm, matrix, debouncer, ev_sender],
     )]
     fn scan_timer_irq(cx: scan_timer_irq::Context) {
         let alarm = cx.local.alarm;
@@ -267,7 +279,7 @@ mod app {
                 .get_with_delay(|| cortex_m::asm::delay(1000))
                 .unwrap(),
         ) {
-            handle_event::spawn(event).unwrap();
+            cx.local.ev_sender.try_send(event).unwrap();
         }
         tick_keyberon::spawn().unwrap();
     }

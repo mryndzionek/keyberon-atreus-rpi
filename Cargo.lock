@@ -323,6 +323,7 @@ dependencies = [
  "keyberon",
  "panic-probe",
  "rtic",
+ "rtic-sync",
  "usb-device",
  "vcc-gnd-yd-rp2040",
 ]
@@ -529,6 +530,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "rtic-common"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0786b50b81ef9d2a944a000f60405bb28bf30cd45da2d182f3fe636b2321f35c"
+dependencies = [
+ "critical-section",
+]
+
+[[package]]
 name = "rtic-core"
 version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -545,6 +555,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "rtic-sync"
+version = "1.0.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "adc586db4c7ee4a85482ebb0542f34ffaee16bd8b8c552081f07492f531aca9f"
+dependencies = [
+ "critical-section",
+ "heapless",
+ "rtic-common",
 ]
 
 [[package]]

@@ -15,6 +15,7 @@ vcc-gnd-yd-rp2040 = "0.5"
 usb-device = "0.2.9"
 
 rtic = { version = "2", features = ["thumbv6-backend"] }
+rtic-sync = "1.0"
 keyberon = { git = "https://github.com/TeXitoi/keyberon" }
 
 fugit = "0.3"
