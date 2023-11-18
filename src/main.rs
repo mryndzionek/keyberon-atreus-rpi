@@ -43,6 +43,7 @@ mod app {
     use super::*;
 
     const SCAN_TIME_US: MicrosDurationU32 = MicrosDurationU32::millis(1);
+    const EV_CHAN_CAPACITY: usize = 9;
 
     static mut USB_BUS: Option<usb_device::bus::UsbBusAllocator<bsp::hal::usb::UsbBus>> = None;
     const VID: u16 = 0x16c0;
@@ -55,6 +56,12 @@ mod app {
         4,
     >;
 
+    #[derive(Debug)]
+    enum KbdEvent {
+        Ev { event: Event },
+        Tick,
+    }
+
     #[shared]
     struct Shared {
         usb_dev: usb_device::device::UsbDevice<'static, bsp::hal::usb::UsbBus>,
@@ -63,7 +70,6 @@ mod app {
             bsp::hal::usb::UsbBus,
             keyberon::keyboard::Keyboard<()>,
         >,
-        layout: Layout<14, 4, 4, ()>,
     }
 
     #[local]
@@ -77,7 +83,8 @@ mod app {
             bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioOutput>,
             bsp::hal::gpio::PullDown,
         >,
-        ev_sender: Sender<'static, Event, 8>,
+        ev_sender: Sender<'static, KbdEvent, EV_CHAN_CAPACITY>,
+        layout: Layout<14, 4, 4, ()>,
     }
 
     #[init]
@@ -171,20 +178,16 @@ mod app {
                 .serial_number(env!("CARGO_PKG_VERSION"))
                 .build();
 
+        let (ev_sender, r) = make_channel!(KbdEvent, EV_CHAN_CAPACITY);
+        handle_event::spawn(r).unwrap();
+
         watchdog.start(MicrosDurationU32::millis(10));
         alarm.enable_interrupt();
-
-        let (ev_sender, r) = make_channel!(Event, 8);
-        handle_event::spawn(r).unwrap();
 
         defmt::info!("Enabled");
 
         (
-            Shared {
-                usb_dev,
-                usb_class,
-                layout,
-            },
+            Shared { usb_dev, usb_class },
             Local {
                 watchdog,
                 alarm,
@@ -192,6 +195,7 @@ mod app {
                 debouncer,
                 led,
                 ev_sender,
+                layout,
             },
         )
     }
@@ -207,12 +211,41 @@ mod app {
         });
     }
 
-    #[task(priority = 2, shared = [layout])]
-    async fn handle_event(mut c: handle_event::Context, mut receiver: Receiver<'static, Event, 8>) {
+    #[task(priority = 2, local = [layout, led], shared = [usb_dev, usb_class])]
+    async fn handle_event(
+        mut c: handle_event::Context,
+        mut receiver: Receiver<'static, KbdEvent, EV_CHAN_CAPACITY>,
+    ) {
+        let layout = c.local.layout;
+
         while let Ok(event) = receiver.recv().await {
-            c.shared.layout.lock(|layout| {
-                layout.event(event);
-            })
+            match event {
+                KbdEvent::Ev { event } => layout.event(event),
+                KbdEvent::Tick => {
+                    let tick = layout.tick();
+
+                    if c.shared.usb_dev.lock(|d| d.state()) != UsbDeviceState::Configured {
+                        continue;
+                    }
+                    if let CustomEvent::Release(()) = tick {
+                        reset_to_bootloader()
+                    }
+
+                    let report: KbHidReport = layout.keycodes().collect();
+
+                    if !c
+                        .shared
+                        .usb_class
+                        .lock(|k| k.device_mut().set_keyboard_report(report.clone()))
+                    {
+                        continue;
+                    }
+                    
+                    c.local.led.set_high().unwrap();
+                    while let Ok(0) = c.shared.usb_class.lock(|k| k.write(report.as_bytes())) {}
+                    c.local.led.set_low().unwrap();
+                }
+            }
         }
     }
 
@@ -222,31 +255,6 @@ mod app {
         // jump to usb
         bsp::hal::rom_data::reset_to_usb_boot(0, 0);
         loop {}
-    }
-
-    #[task(priority = 2, local = [led], shared = [usb_dev, usb_class, layout])]
-    async fn tick_keyberon(mut c: tick_keyberon::Context) {
-        let tick = c.shared.layout.lock(|layout| layout.tick());
-
-        if c.shared.usb_dev.lock(|d| d.state()) != UsbDeviceState::Configured {
-            return;
-        }
-        if let CustomEvent::Release(()) = tick {
-            reset_to_bootloader()
-        }
-
-        let report: KbHidReport = c.shared.layout.lock(|layout| layout.keycodes().collect());
-
-        if !c
-            .shared
-            .usb_class
-            .lock(|k| k.device_mut().set_keyboard_report(report.clone()))
-        {
-            return;
-        }
-        c.local.led.set_high().unwrap();
-        while let Ok(0) = c.shared.usb_class.lock(|k| k.write(report.as_bytes())) {}
-        c.local.led.set_low().unwrap();
     }
 
     #[task(
@@ -268,9 +276,9 @@ mod app {
                 .get_with_delay(|| cortex_m::asm::delay(1000))
                 .unwrap(),
         ) {
-            cx.local.ev_sender.try_send(event).unwrap();
+            cx.local.ev_sender.try_send(KbdEvent::Ev { event }).unwrap();
         }
-        tick_keyberon::spawn().unwrap();
+        cx.local.ev_sender.try_send(KbdEvent::Tick).unwrap();
     }
 
     #[idle(local = [])]
