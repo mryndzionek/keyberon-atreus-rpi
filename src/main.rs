@@ -12,10 +12,10 @@ use bsp::hal::{
     usb::UsbBus,
     watchdog::Watchdog,
 };
-
 use bsp::XOSC_CRYSTAL_FREQ;
-use cortex_m::prelude::_embedded_hal_watchdog_Watchdog;
-use cortex_m::prelude::_embedded_hal_watchdog_WatchdogEnable;
+
+use cortex_m::prelude::{_embedded_hal_watchdog_Watchdog, _embedded_hal_watchdog_WatchdogEnable};
+
 use defmt_rtt as _;
 use embedded_hal::digital::v2::OutputPin;
 use fugit::MicrosDurationU32;
@@ -78,33 +78,29 @@ mod app {
         alarm: bsp::hal::timer::Alarm0,
         matrix: KbdMatrix,
         debouncer: Debouncer<[[bool; 14]; 4]>,
-        led: bsp::hal::gpio::Pin<
-            bsp::hal::gpio::bank0::Gpio25,
-            bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioOutput>,
-            bsp::hal::gpio::PullDown,
-        >,
+        led: Pin<bsp::hal::gpio::bank0::Gpio25, FunctionSioOutput, PullDown>,
         ev_sender: Sender<'static, KbdEvent, EV_CHAN_CAPACITY>,
         layout: Layout<14, 4, 4, ()>,
     }
 
     #[init]
-    fn init(c: init::Context) -> (Shared, Local) {
+    fn init(cx: init::Context) -> (Shared, Local) {
         defmt::info!("Starting Keyberon");
 
         unsafe {
             bsp::hal::sio::spinlock_reset();
         }
 
-        let mut resets = c.device.RESETS;
-        let mut watchdog = Watchdog::new(c.device.WATCHDOG);
-        let sio = Sio::new(c.device.SIO);
+        let mut resets = cx.device.RESETS;
+        let mut watchdog = Watchdog::new(cx.device.WATCHDOG);
+        let sio = Sio::new(cx.device.SIO);
 
         let clocks = init_clocks_and_plls(
             XOSC_CRYSTAL_FREQ,
-            c.device.XOSC,
-            c.device.CLOCKS,
-            c.device.PLL_SYS,
-            c.device.PLL_USB,
+            cx.device.XOSC,
+            cx.device.CLOCKS,
+            cx.device.PLL_SYS,
+            cx.device.PLL_USB,
             &mut resets,
             &mut watchdog,
         )
@@ -112,17 +108,13 @@ mod app {
         .unwrap();
 
         let pins = bsp::Pins::new(
-            c.device.IO_BANK0,
-            c.device.PADS_BANK0,
+            cx.device.IO_BANK0,
+            cx.device.PADS_BANK0,
             sio.gpio_bank0,
             &mut resets,
         );
 
-        let led: bsp::hal::gpio::Pin<
-            bsp::hal::gpio::bank0::Gpio25,
-            bsp::hal::gpio::FunctionSio<bsp::hal::gpio::SioOutput>,
-            bsp::hal::gpio::PullDown,
-        > = pins.led.into_push_pull_output();
+        let led = pins.led.into_push_pull_output();
 
         let matrix: KbdMatrix = Matrix::new(
             [
@@ -153,13 +145,16 @@ mod app {
         let layout = Layout::new(&crate::layout::LAYERS);
         let debouncer = Debouncer::new([[false; 14]; 4], [[false; 14]; 4], 5);
 
-        let mut timer = bsp::hal::Timer::new(c.device.TIMER, &mut resets, &clocks);
+        let mut timer = bsp::hal::Timer::new(cx.device.TIMER, &mut resets, &clocks);
         let mut alarm = timer.alarm_0().unwrap();
         let _ = alarm.schedule(SCAN_TIME_US);
 
+        let (ev_sender, r) = make_channel!(KbdEvent, EV_CHAN_CAPACITY);
+        handle_event::spawn(r).unwrap();
+
         let usb_bus = UsbBusAllocator::new(UsbBus::new(
-            c.device.USBCTRL_REGS,
-            c.device.USBCTRL_DPRAM,
+            cx.device.USBCTRL_REGS,
+            cx.device.USBCTRL_DPRAM,
             clocks.usb_clock,
             true,
             &mut resets,
@@ -177,9 +172,6 @@ mod app {
                 .product("Atreus_52")
                 .serial_number(env!("CARGO_PKG_VERSION"))
                 .build();
-
-        let (ev_sender, r) = make_channel!(KbdEvent, EV_CHAN_CAPACITY);
-        handle_event::spawn(r).unwrap();
 
         watchdog.start(MicrosDurationU32::millis(10));
         alarm.enable_interrupt();
@@ -201,9 +193,9 @@ mod app {
     }
 
     #[task(binds = USBCTRL_IRQ, priority = 3, shared = [usb_dev, usb_class])]
-    fn usb_rx(c: usb_rx::Context) {
-        let usb = c.shared.usb_dev;
-        let kb = c.shared.usb_class;
+    fn usb_rx(cx: usb_rx::Context) {
+        let usb = cx.shared.usb_dev;
+        let kb = cx.shared.usb_class;
         (usb, kb).lock(|usb, kb| {
             if usb.poll(&mut [kb]) {
                 kb.poll();
@@ -213,10 +205,10 @@ mod app {
 
     #[task(priority = 2, local = [layout, led], shared = [usb_dev, usb_class])]
     async fn handle_event(
-        mut c: handle_event::Context,
+        mut cx: handle_event::Context,
         mut receiver: Receiver<'static, KbdEvent, EV_CHAN_CAPACITY>,
     ) {
-        let layout = c.local.layout;
+        let layout = cx.local.layout;
 
         while let Ok(event) = receiver.recv().await {
             match event {
@@ -224,7 +216,7 @@ mod app {
                 KbdEvent::Tick => {
                     let tick = layout.tick();
 
-                    if c.shared.usb_dev.lock(|d| d.state()) != UsbDeviceState::Configured {
+                    if cx.shared.usb_dev.lock(|d| d.state()) != UsbDeviceState::Configured {
                         continue;
                     }
                     if let CustomEvent::Release(()) = tick {
@@ -233,17 +225,17 @@ mod app {
 
                     let report: KbHidReport = layout.keycodes().collect();
 
-                    if !c
+                    if !cx
                         .shared
                         .usb_class
                         .lock(|k| k.device_mut().set_keyboard_report(report.clone()))
                     {
                         continue;
                     }
-                    
-                    c.local.led.set_high().unwrap();
-                    while let Ok(0) = c.shared.usb_class.lock(|k| k.write(report.as_bytes())) {}
-                    c.local.led.set_low().unwrap();
+
+                    cx.local.led.set_high().unwrap();
+                    while let Ok(0) = cx.shared.usb_class.lock(|k| k.write(report.as_bytes())) {}
+                    cx.local.led.set_low().unwrap();
                 }
             }
         }
@@ -254,7 +246,9 @@ mod app {
 
         // jump to usb
         bsp::hal::rom_data::reset_to_usb_boot(0, 0);
-        loop {}
+        loop {
+            cortex_m::asm::delay(1000)
+        }
     }
 
     #[task(
