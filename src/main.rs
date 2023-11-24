@@ -261,7 +261,7 @@ mod app {
         for event in cx.local.debouncer.events(
             cx.local
                 .matrix
-                .get_with_delay(|| cortex_m::asm::delay(250))
+                .get_with_delay(|| cortex_m::asm::delay(1000))
                 .unwrap(),
         ) {
             handle_event::spawn(event).unwrap();
