@@ -275,7 +275,7 @@ mod app {
         cx.local.ev_sender.try_send(KbdEvent::Tick).unwrap();
     }
 
-    #[idle(local = [])]
+    #[idle]
     fn idle(_cx: idle::Context) -> ! {
         loop {
             rtic::export::wfi();
