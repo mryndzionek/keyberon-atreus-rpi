@@ -13,6 +13,12 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
+
+      - name: Prepare
+        run: |
+          sudo apt-get update
+          sudo apt-get install libudev-dev
+
       - uses: actions/checkout@v4
       - uses: actions-rs/toolchain@v1.0.7
         with:
@@ -30,14 +36,17 @@ jobs:
         run: |
           rustup override set nightly
           rustup target add thumbv6m-none-eabi
-          cargo install cargo-binutils flip-link
+          cargo install cargo-binutils flip-link elf2uf2-rs
           cargo build --bin keyberon-atreus-rpi --target=thumbv6m-none-eabi
           cargo objcopy --bin keyberon-atreus-rpi --release --target=thumbv6m-none-eabi -- -O binary keyboard.bin
+          elf2uf2-rs target/thumbv6m-none-eabi/release/keyberon-atreus-rpi
 
       - uses: actions/upload-artifact@v2
         with:
           name: keyboard-bin
-          path: keyboard.bin
+          path: |
+            keyboard.bin
+            target/thumbv6m-none-eabi/release/keyberon-atreus-rpi.uf2
 
   fmt:
     runs-on: ubuntu-latest
