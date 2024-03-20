@@ -14,8 +14,6 @@ use bsp::hal::{
 };
 use bsp::XOSC_CRYSTAL_FREQ;
 
-use cortex_m::prelude::{_embedded_hal_watchdog_Watchdog, _embedded_hal_watchdog_WatchdogEnable};
-
 use defmt_rtt as _;
 use embedded_hal::digital::v2::OutputPin;
 use fugit::MicrosDurationU32;
@@ -27,7 +25,7 @@ use keyberon::matrix::Matrix;
 
 use usb_device::class_prelude::*;
 use usb_device::device::UsbDeviceState;
-use usb_device::prelude::{UsbDeviceBuilder, UsbVidPid};
+use usb_device::prelude::{StringDescriptors, UsbDeviceBuilder, UsbVidPid};
 
 use vcc_gnd_yd_rp2040 as bsp;
 
@@ -168,9 +166,12 @@ mod app {
 
         let usb_dev =
             UsbDeviceBuilder::new(unsafe { USB_BUS.as_ref().unwrap() }, UsbVidPid(VID, PID))
-                .manufacturer("Molcos")
-                .product("Atreus_52")
-                .serial_number(env!("CARGO_PKG_VERSION"))
+                .strings(&[StringDescriptors::default()
+                    .manufacturer("Molcos")
+                    .product("Atreus_52")
+                    .serial_number(env!("CARGO_PKG_VERSION"))])
+                .unwrap()
+                .device_class(3)
                 .build();
 
         watchdog.start(MicrosDurationU32::millis(10));
