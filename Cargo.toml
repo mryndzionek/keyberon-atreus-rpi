@@ -11,7 +11,7 @@ defmt = "0.3"
 defmt-rtt = "0.4"
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
-vcc-gnd-yd-rp2040 = { git = "https://github.com/rp-rs/rp-hal-boards" }
+vcc-gnd-yd-rp2040 = "0.6"
 usb-device = "0.3"
 
 rtic = { version = "2", features = ["thumbv6-backend"] }
