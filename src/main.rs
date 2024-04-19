@@ -169,7 +169,7 @@ mod app {
                 .strings(&[StringDescriptors::default()
                     .manufacturer("Molcos")
                     .product("Atreus_52")
-                    .serial_number(env!("CARGO_PKG_VERSION"))])
+                    .serial_number(concat!(env!("GIT_HASH"), "-", env!("BUILD_TIMESTAMP")))])
                 .unwrap()
                 .device_class(3)
                 .build();
