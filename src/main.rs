@@ -15,7 +15,7 @@ use bsp::hal::{
 use bsp::XOSC_CRYSTAL_FREQ;
 
 use defmt_rtt as _;
-use embedded_hal::digital::v2::OutputPin;
+use embedded_hal::digital::OutputPin;
 use fugit::MicrosDurationU32;
 
 use keyberon::debounce::Debouncer;
