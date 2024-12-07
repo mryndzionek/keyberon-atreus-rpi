@@ -14,6 +14,7 @@ panic-probe = { version = "0.3", features = ["print-defmt"] }
 vcc-gnd-yd-rp2040 = "0.6"
 usb-device = "0.3"
 
+portable-atomic = { version = "1", features = ["critical-section"] }
 rtic = { version = "2", features = ["thumbv6-backend"] }
 rtic-sync = "1.0"
 keyberon = { git = "https://github.com/TeXitoi/keyberon" }
