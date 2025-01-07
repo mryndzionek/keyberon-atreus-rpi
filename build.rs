@@ -31,12 +31,12 @@ fn main() {
     println!("cargo:rerun-if-changed=memory.x");
 
     let output = Command::new("git")
-        .args(&["rev-parse", "--short", "HEAD"])
+        .args(["rev-parse", "--short", "HEAD"])
         .output()
         .unwrap();
     let git_hash = String::from_utf8(output.stdout).unwrap();
 
-    let output = Command::new("date").args(&["+%s"]).output().unwrap();
+    let output = Command::new("date").args(["+%s"]).output().unwrap();
     let timestamp = String::from_utf8(output.stdout).unwrap();
     println!("cargo:rustc-env=GIT_HASH={}", git_hash);
     println!("cargo:rustc-env=BUILD_TIMESTAMP={}", timestamp);

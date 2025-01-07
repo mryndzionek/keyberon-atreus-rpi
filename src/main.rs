@@ -27,6 +27,7 @@ use usb_device::class_prelude::*;
 use usb_device::device::UsbDeviceState;
 use usb_device::prelude::{StringDescriptors, UsbDeviceBuilder, UsbVidPid};
 
+use embedded_hal::pwm::SetDutyCycle;
 use vcc_gnd_yd_rp2040 as bsp;
 
 use rtic_sync::{
@@ -38,6 +39,7 @@ mod layout;
 
 #[rtic::app(device = bsp::hal::pac, peripherals = true, dispatchers = [PIO0_IRQ_0])]
 mod app {
+
     use super::*;
 
     const SCAN_TIME_US: MicrosDurationU32 = MicrosDurationU32::millis(1);
@@ -46,6 +48,8 @@ mod app {
     const VID: u16 = 0x16c0;
     const PID: u16 = 0x27db;
 
+    const MAX_LED_BRIGHTNESS: u16 = 10000;
+
     type KbdMatrix = Matrix<
         Pin<DynPinId, FunctionSioInput, PullUp>,
         Pin<DynPinId, FunctionSioOutput, PullDown>,
@@ -53,9 +57,20 @@ mod app {
         4,
     >;
 
+    type LedPwm = bsp::hal::pwm::Channel<
+        bsp::hal::pwm::Slice<bsp::hal::pwm::Pwm1, bsp::hal::pwm::FreeRunning>,
+        bsp::hal::pwm::A,
+    >;
+
     #[derive(Debug)]
     enum KbdEvent {
         Ev { event: Event },
+        Tick,
+    }
+
+    #[derive(Debug)]
+    enum LedEvent {
+        KeyPress,
         Tick,
     }
 
@@ -78,6 +93,8 @@ mod app {
         led: Pin<bsp::hal::gpio::bank0::Gpio25, FunctionSioOutput, PullDown>,
         ev_sender: Sender<'static, KbdEvent, EV_CHAN_CAPACITY>,
         layout: Layout<14, 4, 4, ()>,
+        led_pwm: LedPwm,
+        led_ch_s: Sender<'static, LedEvent, 4>,
     }
 
     #[init(local = [bus: Option<UsbBusAllocator<UsbBus>> = None])]
@@ -142,12 +159,23 @@ mod app {
         let layout = Layout::new(&crate::layout::LAYERS);
         let debouncer = Debouncer::new([[false; 14]; 4], [[false; 14]; 4], 5);
 
+        let pwm_slices = bsp::hal::pwm::Slices::new(cx.device.PWM, &mut resets);
+        let mut pwm = pwm_slices.pwm1;
+        pwm.set_ph_correct();
+        pwm.enable();
+
+        let mut led_pwm = pwm.channel_a;
+        led_pwm.output_to(pins.gpio2.into_push_pull_output());
+
         let mut timer = bsp::hal::Timer::new(cx.device.TIMER, &mut resets, &clocks);
         let mut alarm = timer.alarm_0().unwrap();
         let _ = alarm.schedule(SCAN_TIME_US);
 
         let (ev_sender, r) = make_channel!(KbdEvent, EV_CHAN_CAPACITY);
         handle_event::spawn(r).unwrap();
+
+        let (led_ch_s, led_ch_r) = make_channel!(LedEvent, 4);
+        led_task::spawn(led_ch_r).unwrap();
 
         *cx.local.bus = Some(UsbBusAllocator::new(UsbBus::new(
             cx.device.USBCTRL_REGS,
@@ -185,6 +213,8 @@ mod app {
                 led,
                 ev_sender,
                 layout,
+                led_pwm,
+                led_ch_s,
             },
         )
     }
@@ -238,6 +268,66 @@ mod app {
         }
     }
 
+    fn brightness_to_duty(bri: u16) -> u16 {
+        let mut duty = bri as u32;
+        duty *= duty;
+        duty /= u16::MAX as u32;
+        u16::MAX - (duty as u16)
+    }
+
+    #[task(priority = 2, local = [led_pwm])]
+    async fn led_task(cx: led_task::Context, mut receiver: Receiver<'static, LedEvent, 4>) {
+        let led_pwm = cx.local.led_pwm;
+        let mut state = false;
+        let mut brightness: u16 = 0;
+        let mut dir = true;
+        let mut counter: u16 = 0;
+
+        while let Ok(event) = receiver.recv().await {
+            match state {
+                false => match event {
+                    LedEvent::Tick => {
+                        if dir {
+                            brightness += 5;
+                            if brightness == MAX_LED_BRIGHTNESS {
+                                dir = false;
+                            }
+                        } else {
+                            brightness -= 5;
+                            if brightness == 0 {
+                                dir = true;
+                            }
+                        }
+                        led_pwm
+                            .set_duty_cycle(brightness_to_duty(brightness))
+                            .unwrap();
+                    }
+                    LedEvent::KeyPress => {
+                        led_pwm
+                            .set_duty_cycle(brightness_to_duty(4 * MAX_LED_BRIGHTNESS))
+                            .unwrap();
+                        counter = 10;
+                        state = true;
+                    }
+                },
+                true => match event {
+                    LedEvent::Tick => {
+                        counter -= 1;
+                        if counter == 0 {
+                            led_pwm
+                                .set_duty_cycle(brightness_to_duty(brightness))
+                                .unwrap();
+                            state = false;
+                        }
+                    }
+                    LedEvent::KeyPress => {
+                        counter = 10;
+                    }
+                },
+            }
+        }
+    }
+
     fn reset_to_bootloader() {
         cortex_m::interrupt::disable();
 
@@ -252,7 +342,7 @@ mod app {
         binds = TIMER_IRQ_0,
         priority = 1,
         shared = [],
-        local = [watchdog, alarm, matrix, debouncer, ev_sender],
+        local = [watchdog, alarm, matrix, debouncer, ev_sender, led_ch_s],
     )]
     fn scan_timer_irq(cx: scan_timer_irq::Context) {
         let alarm = cx.local.alarm;
@@ -268,8 +358,12 @@ mod app {
                 .unwrap(),
         ) {
             cx.local.ev_sender.try_send(KbdEvent::Ev { event }).unwrap();
+            if let Event::Press(_, _) = event {
+                cx.local.led_ch_s.try_send(LedEvent::KeyPress).unwrap();
+            }
         }
         cx.local.ev_sender.try_send(KbdEvent::Tick).unwrap();
+        cx.local.led_ch_s.try_send(LedEvent::Tick).unwrap();
     }
 
     #[idle]
