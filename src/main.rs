@@ -43,7 +43,6 @@ mod app {
     const SCAN_TIME_US: MicrosDurationU32 = MicrosDurationU32::millis(1);
     const EV_CHAN_CAPACITY: usize = 9;
 
-    static mut USB_BUS: Option<usb_device::bus::UsbBusAllocator<bsp::hal::usb::UsbBus>> = None;
     const VID: u16 = 0x16c0;
     const PID: u16 = 0x27db;
 
@@ -81,7 +80,7 @@ mod app {
         layout: Layout<14, 4, 4, ()>,
     }
 
-    #[init]
+    #[init(local = [bus: Option<UsbBusAllocator<UsbBus>> = None])]
     fn init(cx: init::Context) -> (Shared, Local) {
         defmt::info!("Starting Keyberon");
 
@@ -150,29 +149,26 @@ mod app {
         let (ev_sender, r) = make_channel!(KbdEvent, EV_CHAN_CAPACITY);
         handle_event::spawn(r).unwrap();
 
-        let usb_bus = UsbBusAllocator::new(UsbBus::new(
+        *cx.local.bus = Some(UsbBusAllocator::new(UsbBus::new(
             cx.device.USBCTRL_REGS,
             cx.device.USBCTRL_DPRAM,
             clocks.usb_clock,
             true,
             &mut resets,
-        ));
+        )));
 
-        unsafe {
-            USB_BUS = Some(usb_bus);
-        }
+        let usb_bus = cx.local.bus.as_ref().unwrap();
 
-        let usb_class = keyberon::new_class(unsafe { USB_BUS.as_ref().unwrap() }, ());
+        let usb_class = keyberon::new_class(usb_bus, ());
 
-        let usb_dev =
-            UsbDeviceBuilder::new(unsafe { USB_BUS.as_ref().unwrap() }, UsbVidPid(VID, PID))
-                .strings(&[StringDescriptors::default()
-                    .manufacturer("Molcos")
-                    .product("Atreus_52")
-                    .serial_number(concat!(env!("GIT_HASH"), "-", env!("BUILD_TIMESTAMP")))])
-                .unwrap()
-                .device_class(3)
-                .build();
+        let usb_dev = UsbDeviceBuilder::new(usb_bus, UsbVidPid(VID, PID))
+            .strings(&[StringDescriptors::default()
+                .manufacturer("Molcos")
+                .product("Atreus_52")
+                .serial_number(concat!(env!("GIT_HASH"), "-", env!("BUILD_TIMESTAMP")))])
+            .unwrap()
+            .device_class(3)
+            .build();
 
         watchdog.start(MicrosDurationU32::millis(10));
         alarm.enable_interrupt();
